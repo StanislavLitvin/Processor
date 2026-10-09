@@ -1,0 +1,5 @@
+PUSH -5.5
+PUSH   10.5
+ADD
+OUT
+HLT
