@@ -1,4 +1,4 @@
-typedef double Stack_Elem_t;
+typedef int Stack_Elem_t;
 
 #include <stdio.h>
 #include <assert.h>
@@ -7,11 +7,11 @@ typedef double Stack_Elem_t;
 
 #define RED   "\033[31m"
 #define RESET "\033[0m"
-#define FILE_FOR_ERRORS "Errors.log"
+#define FILE_FOR_ERRORS "Dumb_File.log"
 #define POISON (Stack_Elem_t)0xDEADDEAD
 #define LEFT_CANARY (Stack_Elem_t)0xDEADF00D
 #define RIGHT_CANARY (Stack_Elem_t)0xBAADEDAA
-#define STACK_DEBUG
+//#define STACK_DEBUG
 
 #ifdef STACK_DEBUG
 #define ON_DBG(...) __VA_ARGS__
@@ -19,9 +19,9 @@ typedef double Stack_Elem_t;
 #define ON_DBG(...)
 #endif
 
-const Stack_Elem_t ACCURACY_CONSTANT = 1e-5;
+const Stack_Elem_t ACCURACY_CONSTANT = 0;
 const size_t STACK_START_NUMBERS_ELEM = 5;
-const Stack_Elem_t ERROR_STATUS_STACK_POP = NAN;
+const Stack_Elem_t ERROR_STATUS_STACK_POP = -1000;
 
 struct Stack_t
 {

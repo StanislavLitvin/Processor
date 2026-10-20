@@ -1,0 +1,9 @@
+:0
+PUSH 10
+JMP :1
+:1
+PUSHr CX
+:2
+ADD
+JMP :0
+HLT

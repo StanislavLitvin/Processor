@@ -153,6 +153,9 @@ Stack_Error_Status Stack_Dumb(Stack_t* Stk)
     printf(RED "ERROR: ERROR_OPENING_ERROR_FILE\n" RESET);
     return ERROR_OPENING_ERROR_FILE;
   }
+
+  fprintf(Error_File, "\n-------------------Stack_Dumb---Start----------------\n\n");
+
   ON_DBG(
     fprintf(Error_File, "Stack_t \"%s\" created by main() at %s: %d\n",
             Stk->Name, Stk->File, Stk->Line);
@@ -168,13 +171,13 @@ Stack_Error_Status Stack_Dumb(Stack_t* Stk)
     if (fabs(Stk->Data[i] - POISON) < ACCURACY_CONSTANT)
       fprintf(Error_File, "\n\t\t*[%zu]  = %X", i, (unsigned int)Stk->Data[i]);
     else
-      fprintf(Error_File, "\n\t\t [%zu]  = %lg", i, Stk->Data[i]);
+      fprintf(Error_File, "\n\t\t [%zu]  = %d", i, Stk->Data[i]);
   }
   fprintf(Error_File, "\n\t\t![%zu]  = %X (RIGHT_CANARY)",
           Stk->Capacity, (unsigned int)Stk->Data[Stk->Capacity]);
 
   fprintf(Error_File, "\n\t}\n}");
-  fprintf(Error_File, "\n-------------------End-------------------\n\n");
+  fprintf(Error_File, "\n-------------------Stack_Dumb---End----------------\n\n");
 
   if (fclose(Error_File) != 0)
   {
