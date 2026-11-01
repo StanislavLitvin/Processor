@@ -7,44 +7,47 @@ int main(int argc, char* argv[])
 
   const char *Name_File_Native_Code = (argc >= 2) ? argv[1] : NAME_FILE_NATIVE_CODE_BY_DEFAULT;
 
-  struct Processor Proc = {0};
-  Proc.Code_Array = (int*)calloc(MAX_CODE_SIZE, sizeof(int));
-  Proc.Register_Array = (int*)calloc(MAX_REGISTERS_NUMBER, sizeof(int));
-  Proc.System_Register_Array = (int*)calloc(MAX_SYSTEM_REGISTERS_NUMBER, sizeof(int));
+  struct Processor* Proc = Proc_Init();
+  if (Proc == NULL)
+  {
+    Proc_Destroy(Proc);
+    printf("ERROR: allocate memory error\n");
+    return ERROR_ALLOCATION;
+  }
 
   FILE* Native_File = Fopen_File(Name_File_Native_Code, READING);
   if (Native_File == NULL)
-    return -1;
+  {
+    Proc_Destroy(Proc);
+    return ERROR_OPENING_FILE;
+  }
 
-  if (Read_File_And_Formating_Code_Array(Native_File, &Proc) != 0)
+  if (Read_File_Formating_Code(Native_File, Proc) != ERROR_NOT)
   {
     Fclose_File(Native_File, Name_File_Native_Code);
-    return -2;
+    Proc_Destroy(Proc);
+    return ERROR_CLOSING_FILE;
   }
 
   Clear_Log_File();
-  Stack_Error_Status Err = Stack_Init(&Proc.Stk, START_CAPACITY ON_DBG(, "Stk", __FILE__, __LINE__));
-  if (Err < 0)
-  {
-    printf("ERROR: memory allocation error\n");
-    return Err;
-  }
 
-  if (Pass_Code_Array_And_Execution_Commands(&Proc) == ANSWER_POISON)
+  if (Doing_Commands_In_Code(Proc) == ANSWER_POISON)
   {
+    Proc_Destroy(Proc);
     printf("ERROR: execution error\n");
-    return -3;
+    return ERROR_DOING;
   }
 
-  if (Fclose_File(Native_File, Name_File_Native_Code) != 0)
-    return -1;
+  if (Fclose_File(Native_File, Name_File_Native_Code) != ERROR_NOT)
+  {
+    Proc_Destroy(Proc);
+    return ERROR_CLOSING_FILE;
+  }
 
-  Stack_Destroy(&Proc.Stk);
-  free(Proc.Code_Array);
-  free(Proc.Register_Array);
-  free(Proc.System_Register_Array);
+  Proc_Destroy(Proc);
   printf("Successful completion of the program\n");
-  return 0;
+
+  return ERROR_NOT;
 }
 
 FILE* Fopen_File(const char* File_Name, const char* Mode)
@@ -59,32 +62,99 @@ FILE* Fopen_File(const char* File_Name, const char* Mode)
   return File;
 }
 
-int Fclose_File(FILE* File, const char* File_Name)
+Errors Fclose_File(FILE* File, const char* File_Name)
 {
   if (File == NULL)
   {
     printf("ERROR: invalid pointer to file %s\n", File_Name);
-    return 1;
+    return ERROR_CLOSING_FILE;
   }
 
   if (fclose(File) == EOF)
     printf("WARNING: can't close file %s\n", File_Name);
 
-  return 0;
+  return ERROR_NOT;
 }
 
-int Read_File_And_Formating_Code_Array(FILE* Native_File, Processor* Proc)
+struct Processor* Proc_Init(void)
 {
-  int Command_Value = 0;
-  while (fscanf(Native_File, "%d", &Command_Value) > 0)
+  struct Processor* Proc = (struct Processor*)calloc(1, sizeof(struct Processor));
+  if (Proc == NULL)
+  {
+    Proc_Destroy(Proc);
+    printf("ERROR: can't allocate memory for Proc\n");
+    return NULL;  
+  }
+
+  Proc->Code_Array = (Elements*)calloc(MAX_CODE_SIZE, sizeof(Elements));
+  Proc->Register_Array = (Elements*)calloc(MAX_REGISTERS_NUMBER, sizeof(Elements));
+  if (Proc->Code_Array == NULL || Proc->Register_Array == NULL)
+  {
+    Proc_Destroy(Proc);
+    printf("ERROR: can't allocate memory for Code or Registers\n");
+    return NULL;
+  }
+
+  Stack_Error_Status Err = Stack_Init(&(Proc->Stk), START_CAPACITY
+                                      ON_DBG(, "Stk", __FILE__, __LINE__));
+  if (Err < 0)
+  {
+    Proc_Destroy(Proc);
+    printf("ERROR: memory allocation error\n");
+    return NULL;
+  }
+
+  Err = Stack_Init(&(Proc->Ret_Addr), START_CAPACITY ON_DBG(, "Ret_Addr", __FILE__, __LINE__));
+  if (Err < 0)
+  {
+    Proc_Destroy(Proc);
+    printf("ERROR: memory allocation error\n");
+    return NULL;
+  }
+
+  return Proc;
+}
+
+void Proc_Destroy(struct Processor* Proc)
+{
+  if (Proc == NULL)
+    return;
+  if (&(Proc->Stk) != NULL)
+    Stack_Destroy(&Proc->Stk);
+  if (&(Proc->Ret_Addr) != NULL)
+    Stack_Destroy(&Proc->Ret_Addr);
+
+  free(Proc->Code_Array);
+  free(Proc->Register_Array);
+  free(Proc);
+
+  return;
+}
+
+Errors Read_File_Formating_Code(FILE* Native_File, Processor* Proc)
+{
+  Elements Command_Value = 0;
+  while (fscanf(Native_File, "%lld", &Command_Value) > 0 && Proc->IP < MAX_CODE_SIZE)
   {
     Proc->Code_Array[Proc->IP] = Command_Value;
     (Proc->IP)++;
-    size_t Number_Arg = Count_Number_Arg_For_Command(Proc->Code_Array, Proc->IP - 1);
+  }
+
+  Proc->Code_Size = Proc->IP;
+  return ERROR_NOT;
+}
+
+/*{
+  Elements Command_Value = 0;
+  while (fscanf(Native_File, "%lld", &Command_Value) > 0)
+  {
+    Proc->Code_Array[Proc->IP] = Command_Value;
+    (Proc->IP)++;
+    size_t Number_Arg = Cnt_Num_Arg_For_Command(Proc->Code_Array, Proc->IP - 1);
     if (Number_Arg == 1)
     {
-      int Argument_Value = 0;
-      if (fscanf(Native_File, "%d", &Argument_Value) > 0)
+      Elements Argument_Value = 0;
+      if (fscanf(Native_File, "%lld", &Argument_Value) > 0)
       {
         Proc->Code_Array[Proc->IP] = Argument_Value;
         (Proc->IP)++;
@@ -92,7 +162,7 @@ int Read_File_And_Formating_Code_Array(FILE* Native_File, Processor* Proc)
       else
       {
         printf("ERROR: syntax error\n");
-        return -1;
+        return ERROR_INVALID_ARGUMENT;
       }
     }
     else if (Number_Arg == 0)
@@ -100,88 +170,87 @@ int Read_File_And_Formating_Code_Array(FILE* Native_File, Processor* Proc)
     else
     {
       printf("ERROR: incorrect number of arguments\n");
-      return -1;
+      return ERROR_INVALID_ARGUMENT;
     }
   }
 
   Proc->Code_Size = Proc->IP;
-  return 0;
-}
+  return ERROR_NOT;
+}*/
 
-size_t Count_Number_Arg_For_Command(int Code_Array[], size_t i)
+size_t Cnt_Num_Arg_For_Command(Elements Code_Array[], size_t i)
 {
-  int Val = Code_Array[i];
-  if (Val == HLT || Val == ADD || Val == SUB || Val == MUL ||
-      Val == DIV || Val == IN || Val == OUT || Val == RET || Val == DUMB)
+  Elements Val = Code_Array[i];
+  if (Val == HLT || Val == ADD || Val == SUB || Val == MUL || Val == DIV ||
+      Val == IN || Val == OUT || Val == RET || Val == DUMB || Val == SQRT || Val == SQU)
     return 0;
   else
     return 1;
 }
 
-int Pass_Code_Array_And_Execution_Commands(Processor* Proc)
+int Doing_Commands_In_Code(Processor* Proc)
 {
   Proc->IP = 0;
   while (Proc->IP < Proc->Code_Size)
   {
-    int Command_Value = Proc->Code_Array[Proc->IP];
+    Elements Command_Value = Proc->Code_Array[Proc->IP];
     bool Flag_Need_Exit = false, Jumped = false;
     int Temp = 0;
     switch (Command_Value)
     {
-      case HLT: Flag_Need_Exit = HLT_C(Flag_Need_Exit); break;
+      case HLT: Flag_Need_Exit = Hlt_C(Flag_Need_Exit); break;
 
-      case PUSH:  if (PUSH_C(Proc) != 0)  return ANSWER_POISON; break;
+      case PUSH:  if (Push_C(Proc) != ERROR_NOT)  return ANSWER_POISON; break;
 
-      case PUSHr: if (PUSHr_C(Proc) != 0) return ANSWER_POISON; break;
+      case PUSHr: if (Pushr_C(Proc) != ERROR_NOT) return ANSWER_POISON; break;
 
-      case POP:   if (POP_C(Proc) != 0)   return ANSWER_POISON; break;
+      case POP:   if (Pop_C(Proc) != ERROR_NOT)   return ANSWER_POISON; break;
 
-      case POPr:  if (POPr_C(Proc) != 0)  return ANSWER_POISON; break;
+      case POPr:  if (Popr_C(Proc) != ERROR_NOT)  return ANSWER_POISON; break;
 
-      case ADD:   if (ADD_C(Proc) != 0)   return ANSWER_POISON; break;
+      case ADD:   if (Add_C(Proc) != ERROR_NOT)   return ANSWER_POISON; break;
 
-      case SUB:   if (SUB_C(Proc) != 0)   return ANSWER_POISON; break;
+      case SUB:   if (Sub_C(Proc) != ERROR_NOT)   return ANSWER_POISON; break;
 
-      case MUL:   if (MUL_C(Proc) != 0)   return ANSWER_POISON; break;
+      case MUL:   if (Mul_C(Proc) != ERROR_NOT)   return ANSWER_POISON; break;
 
-      case DIV:   if (DIV_C(Proc) != 0)   return ANSWER_POISON; break;
+      case DIV:   if (Div_C(Proc) != ERROR_NOT)   return ANSWER_POISON; break;
 
-      case JMP: Jumped = JMP_C(Proc); break;
+      case JMP: Jumped = Jmp_C(Proc); break;
 
-      case JA:  Jumped = JA_C(Proc);  break;
+      case JA:
+      case JAE:
+      case JB:
+      case JBE:
+      case JE:
+      case JNE: Jumped = Jmp_Conditional_C(Proc, Command_Value); break;
 
-      case JAE: Jumped = JAE_C(Proc); break;
+      case IN:   if (In_C(Proc) != ERROR_NOT)   return ANSWER_POISON; break;
 
-      case JB:  Jumped = JB_C(Proc);  break;
-
-      case JBE: Jumped = JBE_C(Proc); break;
-
-      case JE:  Jumped = JE_C(Proc);  break;
-
-      case JNE: Jumped = JNE_C(Proc); break;
-
-      case IN:   if (IN_C(Proc) != 0)   return ANSWER_POISON; break;
-
-      case OUT:  if (OUT_C(Proc) != 0)  return ANSWER_POISON; break;
+      case OUT:  if (Out_C(Proc) != ERROR_NOT)  return ANSWER_POISON; break;
 
       case CALL:
-        Temp = CALL_C(Proc);
+        Temp = Call_C(Proc);
         if   (Temp < 0)     return ANSWER_POISON;
         else Jumped = Temp; break;
 
       case RET:
-        Temp = RET_C(Proc);
+        Temp = Ret_C(Proc);
         if   (Temp < 0)     return ANSWER_POISON;
         else Jumped = Temp; break;
 
-      case DUMB: DUMB_C(Proc); break;
+      case DUMB: Dumb_C(Proc); break;
+
+      case SQRT:   if (Sqrt_C(Proc) != ERROR_NOT)   return ANSWER_POISON; break;
+
+      case SQU:    if (Squ_C(Proc) != ERROR_NOT)    return ANSWER_POISON; break;
 
       default: printf("ERROR: unsupported command\n"); break;
     }
 
     if (!Jumped)
     {
-      size_t Number_Arg = Count_Number_Arg_For_Command(Proc->Code_Array, Proc->IP);
+      size_t Number_Arg = Cnt_Num_Arg_For_Command(Proc->Code_Array, Proc->IP);
       Proc->IP += Number_Arg + 1;
     }
 
@@ -189,184 +258,168 @@ int Pass_Code_Array_And_Execution_Commands(Processor* Proc)
       break;
   }
 
-  return 0;
+  return ERROR_NOT;
 }
 
-int HLT_C(bool Flag)
+int Hlt_C(bool Flag)
 {
   return !Flag;
 }
 
-int PUSH_C(Processor* Proc)
+Errors Push_C(Processor* Proc)
 {
   if (Stack_Push(&(Proc->Stk), Proc->Code_Array[Proc->IP + 1]) != EVERYTHING_OK)
-    return -1;
-  return 0;
+    return ERROR_DOING_ASM_COMMAND;
+  return ERROR_NOT;
 }
 
-int PUSHr_C(Processor* Proc)
+Errors Pushr_C(Processor* Proc)
 {
-  int Register_Value = Proc->Register_Array[Proc->Code_Array[Proc->IP + 1]];
+  Elements Register_Value = Proc->Register_Array[Proc->Code_Array[Proc->IP + 1]];
   if (Stack_Push(&(Proc->Stk), Register_Value) != EVERYTHING_OK)
-    return -1;
-  return 0;
+    return ERROR_DOING_ASM_COMMAND;
+  return ERROR_NOT;
 }
 
-int POP_C(Processor* Proc)
+Errors Pop_C(Processor* Proc)
 {
   Stack_Pop(&(Proc->Stk));
-  return 0;
+  return ERROR_NOT;
 }
 
-int POPr_C(Processor* Proc)
+Errors Popr_C(Processor* Proc)
 {
-  int Value = Stack_Pop(&(Proc->Stk));
+  Elements Value = Stack_Pop(&(Proc->Stk));
   Proc->Register_Array[Proc->Code_Array[Proc->IP + 1]] = Value;
-  return 0;
+  return ERROR_NOT;
 }
 
-int ADD_C(Processor* Proc)
+Errors Add_C(Processor* Proc)
 {
-  int Value2 = Stack_Pop(&(Proc->Stk));
-  int Value1 = Stack_Pop(&(Proc->Stk));
+  Elements Value2 = Stack_Pop(&(Proc->Stk));
+  Elements Value1 = Stack_Pop(&(Proc->Stk));
   if (Stack_Push(&(Proc->Stk), Value1 + Value2) != EVERYTHING_OK)
-    return -1;
-  return 0;
+    return ERROR_DOING_ASM_COMMAND;
+  return ERROR_NOT;
 }
 
-int SUB_C(Processor* Proc)
+Errors Sub_C(Processor* Proc)
 {
-  int Value2 = Stack_Pop(&(Proc->Stk));
-  int Value1 = Stack_Pop(&(Proc->Stk));
+  Elements Value2 = Stack_Pop(&(Proc->Stk));
+  Elements Value1 = Stack_Pop(&(Proc->Stk));
   if (Stack_Push(&(Proc->Stk), Value1 - Value2) != EVERYTHING_OK)
-    return -1;
-  return 0;
+    return ERROR_DOING_ASM_COMMAND;
+  return ERROR_NOT;
 }
 
-int MUL_C(Processor* Proc)
+Errors Mul_C(Processor* Proc)
 {
-  int Value2 = Stack_Pop(&(Proc->Stk));
-  int Value1 = Stack_Pop(&(Proc->Stk));
+  Elements Value2 = Stack_Pop(&(Proc->Stk));
+  Elements Value1 = Stack_Pop(&(Proc->Stk));
   if (Stack_Push(&(Proc->Stk), Value1 * Value2) != EVERYTHING_OK)
-    return -1;
-  return 0;
+    return ERROR_DOING_ASM_COMMAND;
+  return ERROR_NOT;
 }
 
-int DIV_C(Processor* Proc)
+Errors Div_C(Processor* Proc)
 {
-  int Value2 = Stack_Pop(&(Proc->Stk));
-  int Value1 = Stack_Pop(&(Proc->Stk));
-  if (Stack_Push(&(Proc->Stk), Value1 / Value2) != EVERYTHING_OK)
-    return -1;
-  return 0;
+  Elements Value2 = Stack_Pop(&(Proc->Stk));
+  Elements Value1 = Stack_Pop(&(Proc->Stk));
+  if (Value2 == 0 || Stack_Push(&(Proc->Stk), Value1 / Value2) != EVERYTHING_OK)
+    return ERROR_DOING_ASM_COMMAND;
+  return ERROR_NOT;
 }
 
-int JMP_C(Processor* Proc)
+int Jmp_C(Processor* Proc)
 {
   Proc->IP = (size_t)(Proc->Code_Array[Proc->IP + 1]);
   return 1;
 }
 
-int JA_C(Processor* Proc)
+int Jmp_Conditional_C(Processor* Proc, Elements Command)
 {
-  int Value1 = Stack_Pop(&(Proc->Stk));
-  int Value2 = Stack_Pop(&(Proc->Stk));
-  if (Value1 > Value2)
-    return JMP_C(Proc);
+  Elements Value2 = Stack_Pop(&(Proc->Stk));
+  Elements Value1 = Stack_Pop(&(Proc->Stk));
+  bool Flag_Compare = false;
+
+  switch(Command)
+  {
+    case JA:  Flag_Compare = (Value1 >  Value2); break;
+    case JAE: Flag_Compare = (Value1 >= Value2); break;
+    case JB:  Flag_Compare = (Value1 <  Value2); break;
+    case JBE: Flag_Compare = (Value1 <= Value2); break;
+    case JE:  Flag_Compare = (Value1 == Value2); break;
+    case JNE: Flag_Compare = (Value1 != Value2); break;
+
+    default: break;
+  }
+
+  if (Flag_Compare)
+    return Jmp_C(Proc);
+
   return 0;
 }
 
-int JAE_C(Processor* Proc)
+Errors In_C(Processor* Proc)
 {
-  int Value1 = Stack_Pop(&(Proc->Stk));
-  int Value2 = Stack_Pop(&(Proc->Stk));
-  if (Value1 >= Value2)
-    return JMP_C(Proc);
-  return 0;
-}
-
-int JB_C(Processor* Proc)
-{
-  int Value1 = Stack_Pop(&(Proc->Stk));
-  int Value2 = Stack_Pop(&(Proc->Stk));
-  if (Value1 < Value2)
-    return JMP_C(Proc);
-  return 0;
-}
-
-int JBE_C(Processor* Proc)
-{
-  int Value1 = Stack_Pop(&(Proc->Stk));
-  int Value2 = Stack_Pop(&(Proc->Stk));
-  if (Value1 <= Value2)
-    return JMP_C(Proc);
-  return 0;
-}
-
-int JE_C(Processor* Proc)
-{
-  int Value1 = Stack_Pop(&(Proc->Stk));
-  int Value2 = Stack_Pop(&(Proc->Stk));
-  if (Value1 == Value2)
-    return JMP_C(Proc);
-  return 0;
-}
-
-int JNE_C(Processor* Proc)
-{
-  int Value1 = Stack_Pop(&(Proc->Stk));
-  int Value2 = Stack_Pop(&(Proc->Stk));
-  if (Value1 != Value2)
-    return JMP_C(Proc);
-  return 0;
-}
-
-int IN_C(Processor* Proc)
-{
-  int Value = 0;
-  if (scanf("%d", &Value) <= 0)
-    return -1;
+  Elements Value = 0;
+  if (scanf("%lld", &Value) <= 0)
+    return ERROR_DOING_ASM_COMMAND;
   else
   {
     if (Stack_Push(&(Proc->Stk), Value) != EVERYTHING_OK)
-      return -1;
+      return ERROR_DOING_ASM_COMMAND;
   }
-  return 0;
+  return ERROR_NOT;
 }
 
-int OUT_C(Processor* Proc)
+Errors Out_C(Processor* Proc)
 {
-  int Value = Stack_Pop(&(Proc->Stk));
-  printf("%d\n", Value);
-  return 0;
+  Elements Value = Stack_Pop(&(Proc->Stk));
+  printf("%lld\n", Value);
+  return ERROR_NOT;
 }
 
-int CALL_C(Processor* Proc)
+int Call_C(Processor* Proc)
 {
-  if (Proc->Free_System_Register >= MAX_SYSTEM_REGISTERS_NUMBER)
-    return -1;
-  Proc->System_Register_Array[Proc->Free_System_Register] = (int)(Proc->IP + 2);
-  Proc->Free_System_Register++;
-  return JMP_C(Proc);
+  Stack_Push(&(Proc->Ret_Addr), (Elements)(Proc->IP + 2));
+  return Jmp_C(Proc);
 }
 
-int RET_C(Processor* Proc)
+int Ret_C(Processor* Proc)
 {
-  if (Proc->Free_System_Register == 0)
-    return -1;
-  Proc->Free_System_Register--;
-  int Addr = Proc->System_Register_Array[Proc->Free_System_Register];
+  if (Proc->Ret_Addr.Size == 0)
+    return ERROR_DOING_ASM_COMMAND;
+  Elements Addr = Stack_Pop(&(Proc->Ret_Addr));
   Proc->IP = (size_t)Addr;
   return 1;
 }
 
-void DUMB_C(Processor* Proc)
+void Dumb_C(Processor* Proc)
 {
-  Stack_Dumb(&(Proc->Stk));
   Code_Dumb(Proc);
   Registers_Dumb(Proc);
+  Stack_Dumb(&(Proc->Stk));
   getchar();
   return;
+}
+
+Errors Sqrt_C(Processor* Proc)
+{
+  Elements Value = Stack_Pop(&(Proc->Stk));
+  
+  if (Stack_Push(&(Proc->Stk), (Elements)sqrt((double)Value)) != EVERYTHING_OK)
+    return ERROR_DOING_ASM_COMMAND;
+  return ERROR_NOT;
+}
+
+Errors Squ_C(Processor* Proc)
+{
+  Elements Value = Stack_Pop(&(Proc->Stk));
+  
+  if (Stack_Push(&(Proc->Stk), Value * Value) != EVERYTHING_OK)
+    return ERROR_DOING_ASM_COMMAND;
+  return ERROR_NOT;
 }
 
 void Code_Dumb(Processor* Proc)
@@ -376,7 +429,7 @@ void Code_Dumb(Processor* Proc)
     printf("ERROR: can't open file for errors\n");
   else
   {
-    fprintf(Error_File, "\n-------------------Code_Dumb---Start----------------\n\n");
+    fprintf(Error_File, "\n-------------------Code_Dumb---Start----------------\n");
     fprintf(Error_File, "Code_Size = %zu\n", Proc->Code_Size);
     fprintf(Error_File, "IP = %zu\n", Proc->IP);
     fprintf(Error_File, "Code_Array:\n");
@@ -384,35 +437,22 @@ void Code_Dumb(Processor* Proc)
     for (size_t i = 0; i < Proc->Code_Size; i++)
     {
       if (Proc->IP == i)
-        fprintf(Error_File, " [%zu] ", i);
+      {
+        fprintf(Error_File, "[%2zu]:   [%lld]\n", i, Proc->Code_Array[i]);
+      }
       else
-        fprintf(Error_File, "  %zu  ", i);
+      {
+        fprintf(Error_File, " %2zu :    %lld\n", i, Proc->Code_Array[i]);
+      }
     }
-    fprintf(Error_File, "\n");
 
-    for (size_t i = 0; i < Proc->Code_Size; i++)
-    {
-      if (Proc->IP == i)
-        fprintf(Error_File, " [%d] ", Proc->Code_Array[i]);
-      else
-        fprintf(Error_File, "  %d  ", Proc->Code_Array[i]);
-    }
-    fprintf(Error_File, "\n");
-
-    for (size_t i = 0; i < Proc->Code_Size; i++)
-    {
-      if (Proc->IP != i)
-        fprintf(Error_File, "     ");
-      else
-        fprintf(Error_File, "  ^  ");
-    }
-    fprintf(Error_File, "\n");
-
-    fprintf(Error_File, "\n-------------------Code_Dumb---End----------------\n\n");
+    fprintf(Error_File, "-------------------Code_Dumb---End----------------\n\n\n");
 
     if (fclose(Error_File) != 0)
       printf("WARNING: can't close file for errors\n");
   }
+
+  return;
 }
 
 void Registers_Dumb(Processor* Proc)
@@ -422,7 +462,7 @@ void Registers_Dumb(Processor* Proc)
     printf("ERROR: can't open file for errors\n");
   else
   {
-    fprintf(Error_File, "\n-------------------Registers_Dumb---Start----------------\n\n");
+    fprintf(Error_File, "\n-------------------Registers_Dumb---Start----------------\n");
     fprintf(Error_File, "Register_Array:\n");
 
     for (size_t i = 0; i < MAX_REGISTERS_NUMBER; i++)
@@ -430,23 +470,18 @@ void Registers_Dumb(Processor* Proc)
     fprintf(Error_File, "\n");
 
     for (size_t i = 0; i < MAX_REGISTERS_NUMBER; i++)
-      fprintf(Error_File, "  %d   ", Proc->Register_Array[i]);
+      fprintf(Error_File, "  %-2lld  ", Proc->Register_Array[i]);
     fprintf(Error_File, "\n\n\n");
 
-    fprintf(Error_File, "Free_System_Register = %zu\n", Proc->Free_System_Register);
-    fprintf(Error_File, "System_Register_Array:\n");
+    fprintf(Error_File, "Register_Stack:");
 
-    for (size_t i = 0; i < MAX_SYSTEM_REGISTERS_NUMBER; i++)
-      fprintf(Error_File, "  %s  ", SYSTEM_REGISTERS[i]);
-    fprintf(Error_File, "\n");
+    Stack_Dumb(&(Proc->Ret_Addr), Error_File);
 
-    for (size_t i = 0; i < MAX_SYSTEM_REGISTERS_NUMBER; i++)
-      fprintf(Error_File, "   %d   ", Proc->System_Register_Array[i]);
-    fprintf(Error_File, "\n");
-
-    fprintf(Error_File, "\n-------------------Registers_Dumb---End----------------\n\n");
+    fprintf(Error_File, "\n-------------------Registers_Dumb---End----------------\n\n\n");
 
     if (fclose(Error_File) != 0)
       printf("WARNING: can't close file for errors\n");
   }
+
+  return;
 }

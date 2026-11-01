@@ -1,4 +1,4 @@
-typedef int Stack_Elem_t;
+typedef long long int Stack_Elem_t;
 
 #include <stdio.h>
 #include <assert.h>
@@ -63,5 +63,5 @@ Stack_Error_Status Stack_Push(Stack_t* Stk, Stack_Elem_t Value);
 Stack_Elem_t Stack_Pop(Stack_t* Stk);
 void Stack_Destroy(Stack_t* Stk);
 Stack_Error_Status Stack_Verify(Stack_t* Stk);
-Stack_Error_Status Stack_Dumb(Stack_t* Stk);
+Stack_Error_Status Stack_Dumb(Stack_t* Stk, FILE* Out_File = NULL);
 Stack_Error_Status Resize(Stack_t* Stk, Mode_For_Resize Mode);
